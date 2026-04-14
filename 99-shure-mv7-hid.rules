@@ -1,0 +1,17 @@
+# /etc/udev/rules.d/99-shure-mv7-hid.rules
+#
+# Grant the "input" group read/write access to the Shure MV7+ HID device
+# so the bridge daemon can run without root.
+#
+# Shure vendor ID: 0x14ED, MV7+ product ID: 0x1019
+# We match the hidraw subsystem specifically to avoid touching the audio interfaces.
+#
+# After installing:
+#   sudo udevadm control --reload-rules
+#   sudo udevadm trigger --subsystem-match=hidraw
+#
+# Ensure your user is in the "input" group:
+#   sudo usermod -aG input smp
+#   (then log out and back in)
+
+SUBSYSTEM=="hidraw", ATTRS{idVendor}=="14ed", ATTRS{idProduct}=="1019", MODE="0660", GROUP="input", TAG+="uaccess"

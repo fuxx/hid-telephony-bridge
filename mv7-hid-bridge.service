@@ -1,0 +1,36 @@
+# ~/.config/systemd/user/mv7-hid-bridge.service
+#
+# systemd user service for the Shure MV7+ HID Telephony bridge.
+# Runs in the user session alongside PipeWire - no root required
+# (assuming the udev rule grants hidraw access).
+#
+# Install:
+#   cp mv7-hid-bridge.service ~/.config/systemd/user/
+#   systemctl --user daemon-reload
+#   systemctl --user enable --now mv7-hid-bridge.service
+#
+# Logs:
+#   journalctl --user -u mv7-hid-bridge -f
+
+[Unit]
+Description=Shure MV7+ HID Telephony Bridge
+Documentation=https://github.com/your-user/mv7-hid-bridge
+After=pipewire-pulse.service
+BindsTo=pipewire-pulse.service
+# Restart if the mic is re-plugged (udev can trigger a restart via
+# systemctl --user restart mv7-hid-bridge.service in a udev RUN rule,
+# but BindsTo + Restart=on-failure covers most cases)
+
+[Service]
+Type=simple
+ExecStart=%h/.local/bin/mv7-hid-bridge --verbose
+# For auto-offhook mode (only active during calls), uncomment:
+# ExecStart=%h/.local/bin/mv7-hid-bridge --auto-offhook --verbose
+Restart=on-failure
+RestartSec=3
+# Give up after too many rapid failures (e.g. device not present)
+StartLimitIntervalSec=60
+StartLimitBurst=5
+
+[Install]
+WantedBy=default.target
