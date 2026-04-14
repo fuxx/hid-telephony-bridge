@@ -173,6 +173,38 @@ If your device uses different HID report IDs, please open an issue with the outp
 sudo usbhid-dump -d XXXX:XXXX -e descriptor
 ```
 
+## Releasing / AUR publishing
+
+Releases use a two-step process to prevent supply chain attacks — CI builds but never pushes to AUR. Only a local, manually verified push can update the AUR package.
+
+### 1. Tag and push
+
+```bash
+git tag v0.1.0
+git push origin main --tags
+```
+
+This triggers the CI workflow (`.github/workflows/build-package.yml`) which:
+- Builds the package in a clean Arch Linux container
+- Computes SHA256 checksums of the source tarball, PKGBUILD, and `.SRCINFO`
+- Uploads everything as a build artifact (PKGBUILD, .SRCINFO, checksums, .pkg.tar.zst)
+
+### 2. Verify and push to AUR locally
+
+Download `checksums.txt` from the GitHub Actions artifact, then:
+
+```bash
+./aur-push.sh v0.1.0
+```
+
+The script will:
+- Download the source tarball and compute its SHA256 locally
+- Compare against the CI checksum — **aborts on mismatch**
+- Show the PKGBUILD and .SRCINFO for review
+- Ask for confirmation before pushing to the AUR git repo
+
+This ensures the tarball GitHub serves hasn't been tampered with between CI build and AUR publish. No secrets or SSH keys are stored in GitHub.
+
 ## Roadmap
 
 This userspace daemon is a working solution, but the proper fix is in the kernel:
