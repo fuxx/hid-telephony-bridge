@@ -1,11 +1,14 @@
 #!/usr/bin/env python3
 """
-mv7-hid-bridge - HID Telephony bridge for Shure MV7+ on Linux/PipeWire
+mv7-hid-bridge - USB HID Telephony mute bridge for Linux/PipeWire
 
-Bridges the MV7+'s USB HID Telephony mute button to PipeWire source mute,
-enabling native GNOME microphone indicator and proper mute state sync.
+Bridges USB microphone hardware mute buttons to PipeWire source mute,
+enabling native desktop microphone indicators and proper mute state sync.
 
-The MV7+ implements USB HID Telephony Page (0x0B):
+Supports any USB mic implementing HID Telephony Page (0x0B) with standard
+report layout (default: Shure MV7+). Use --vid/--pid for other devices.
+
+HID Telephony reports (common layout):
   - Report 0x04 IN:  Phone Mute (bit 1, relative) + Hook Switch (bit 0)
   - Report 0x05 OUT: Off-Hook LED (bit 0) - activates telephony mode
   - Report 0x06 OUT: Mute LED (bit 0) - host-controlled mute indicator
@@ -21,7 +24,7 @@ Modes:
                     adds ~2s latency before the button becomes responsive.
 
 Usage:
-  mv7-hid-bridge [--auto-offhook] [--device /dev/hidrawN]
+  mv7-hid-bridge [--vid VID] [--pid PID] [--auto-offhook] [--device /dev/hidrawN]
 """
 
 import argparse
@@ -42,24 +45,40 @@ REPORT_MUTELED_OUT   = 0x06
 MUTE_BIT  = 1  # bit index in Report 0x04 data byte
 HOOK_BIT  = 0
 
-# USB IDs for Shure MV7+ 
-USB_VID = "000014ED"
-USB_PID = "00001019"
+# Default USB IDs: Shure MV7+
+DEFAULT_VID = "14ed"
+DEFAULT_PID = "1019"
 
-# Logging 
+# Logging
 log = logging.getLogger("mv7-hid-bridge")
 
 
-def find_hidraw_device():
-    """Auto-detect the MV7+ hidraw device via sysfs."""
+def normalize_usb_id(raw):
+    """Normalize a USB ID for sysfs uevent matching.
+
+    Accepts '14ed', '0x14ED', '14ED' etc.
+    Returns 8-char uppercase zero-padded string (e.g. '000014ED')
+    matching the format in /sys/class/hidraw/*/device/uevent.
+    """
+    cleaned = raw.strip().lower()
+    if cleaned.startswith("0x"):
+        cleaned = cleaned[2:]
+    return cleaned.upper().zfill(8)
+
+
+def find_hidraw_device(vid, pid):
+    """Auto-detect a hidraw device by USB VID:PID via sysfs."""
+    vid_match = normalize_usb_id(vid)
+    pid_match = normalize_usb_id(pid)
     for entry in sorted(glob.glob("/sys/class/hidraw/hidraw*")):
         try:
             uevent_path = os.path.join(entry, "device", "uevent")
             with open(uevent_path) as f:
                 uevent = f.read()
-            if USB_VID in uevent and USB_PID in uevent:
+            if vid_match in uevent and pid_match in uevent:
                 devnode = "/dev/" + os.path.basename(entry)
-                log.debug("Found MV7+ at %s", devnode)
+                log.debug("Found device at %s (VID:%s PID:%s)",
+                          devnode, vid_match, pid_match)
                 return devnode
         except (OSError, IOError):
             continue
@@ -127,9 +146,12 @@ class MV7Bridge:
     event and keeps the MV7+ Mute LED in sync with the actual state.
     """
 
-    def __init__(self, device=None, auto_offhook=False):
+    def __init__(self, device=None, auto_offhook=False,
+                 vid=DEFAULT_VID, pid=DEFAULT_PID):
         self.device_path = device
         self.auto_offhook = auto_offhook
+        self.vid = vid
+        self.pid = pid
         self._fd = None
         self._poll = None
         self._running = False
@@ -139,17 +161,31 @@ class MV7Bridge:
     # -- Device I/O ---------------------------------------------------
 
     def open(self):
-        path = self.device_path or find_hidraw_device()
+        path = self.device_path or find_hidraw_device(self.vid, self.pid)
         if not path:
-            raise RuntimeError(
-                "Shure MV7+ hidraw device not found. "
-                "Is the mic connected? Check /dev/hidraw* permissions."
-            )
-        self._fd = os.open(path, os.O_RDWR | os.O_NONBLOCK)
+            return False
+        try:
+            self._fd = os.open(path, os.O_RDWR | os.O_NONBLOCK)
+        except PermissionError:
+            log.error("Permission denied: %s — is your user in the 'input' group?", path)
+            return False
         self._poll = select.poll()
         self._poll.register(self._fd, select.POLLIN)
         self.device_path = path
         log.info("Opened %s", path)
+        return True
+
+    def _wait_for_device(self):
+        """Block until the device appears, with exponential backoff."""
+        interval = 2.0
+        max_interval = 30.0
+        log.info("Waiting for device (VID:%s PID:%s)...", self.vid, self.pid)
+        while self._running:
+            if self.open():
+                return True
+            time.sleep(interval)
+            interval = min(interval * 1.5, max_interval)
+        return False
 
     def close(self):
         if self._fd is not None:
@@ -200,7 +236,6 @@ class MV7Bridge:
     # -- Main loop ----------------------------------------------------
 
     def run(self):
-        self.open()
         self._running = True
 
         def _stop(signum, frame):
@@ -210,62 +245,69 @@ class MV7Bridge:
         signal.signal(signal.SIGTERM, _stop)
         signal.signal(signal.SIGINT, _stop)
 
-        # Activate telephony mode
-        if not self.auto_offhook:
-            self._set_offhook(True)
-            # Sync initial mute state from PipeWire
-            self._muted = get_source_mute()
-            self._set_mute_led(self._muted)
-            log.info("Initial mute state: %s", "ON" if self._muted else "OFF")
-        else:
-            log.info("Auto off-hook mode - waiting for capture streams")
-
-        last_stream_check = 0.0
-        stream_check_interval = 2.0  # seconds
-
         while self._running:
-            # -- Auto off-hook: monitor capture streams -----------
-            if self.auto_offhook:
-                now = time.monotonic()
-                if now - last_stream_check >= stream_check_interval:
-                    last_stream_check = now
-                    streams_active = has_active_capture_streams()
-                    if streams_active and not self._offhook:
-                        self._set_offhook(True)
-                        self._muted = get_source_mute()
-                        self._set_mute_led(self._muted)
-                    elif not streams_active and self._offhook:
-                        self._set_offhook(False)
-                        self._muted = False
+            # -- Wait for device to appear -----------------------
+            if not self._wait_for_device():
+                break
 
-            # -- Poll hidraw for incoming reports -----------------
-            try:
-                events = self._poll.poll(500)  # 500ms timeout
-            except InterruptedError:
-                continue
+            # -- Activate telephony mode -------------------------
+            if not self.auto_offhook:
+                self._set_offhook(True)
+                self._muted = get_source_mute()
+                self._set_mute_led(self._muted)
+                log.info("Initial mute state: %s",
+                         "ON" if self._muted else "OFF")
+            else:
+                log.info("Auto off-hook mode - waiting for capture streams")
 
-            for fd_no, event in events:
-                if event & select.POLLIN:
-                    try:
-                        data = os.read(self._fd, 64)
-                        if data:
-                            self._handle_report(data)
-                    except BlockingIOError:
-                        pass
-                if event & (select.POLLERR | select.POLLHUP):
-                    log.error("Device disconnected")
-                    self._running = False
+            last_stream_check = 0.0
+            stream_check_interval = 2.0  # seconds
+            connected = True
 
-            # -- Sync LED if mute changed externally (e.g. GNOME) --
-            if self._offhook:
-                pw_muted = get_source_mute()
-                if pw_muted != self._muted:
-                    self._muted = pw_muted
-                    self._set_mute_led(pw_muted)
-                    log.info("External mute change detected: %s",
-                             "ON" if pw_muted else "OFF")
+            while self._running and connected:
+                # -- Auto off-hook: monitor capture streams ------
+                if self.auto_offhook:
+                    now = time.monotonic()
+                    if now - last_stream_check >= stream_check_interval:
+                        last_stream_check = now
+                        streams_active = has_active_capture_streams()
+                        if streams_active and not self._offhook:
+                            self._set_offhook(True)
+                            self._muted = get_source_mute()
+                            self._set_mute_led(self._muted)
+                        elif not streams_active and self._offhook:
+                            self._set_offhook(False)
+                            self._muted = False
 
-        self.close()
+                # -- Poll hidraw for incoming reports ------------
+                try:
+                    events = self._poll.poll(500)  # 500ms timeout
+                except InterruptedError:
+                    continue
+
+                for fd_no, event in events:
+                    if event & select.POLLIN:
+                        try:
+                            data = os.read(self._fd, 64)
+                            if data:
+                                self._handle_report(data)
+                        except BlockingIOError:
+                            pass
+                    if event & (select.POLLERR | select.POLLHUP):
+                        log.warning("Device disconnected, waiting for reconnect...")
+                        connected = False
+
+                # -- Sync LED if mute changed externally ---------
+                if connected and self._offhook:
+                    pw_muted = get_source_mute()
+                    if pw_muted != self._muted:
+                        self._muted = pw_muted
+                        self._set_mute_led(pw_muted)
+                        log.info("External mute change detected: %s",
+                                 "ON" if pw_muted else "OFF")
+
+            self.close()
+            self.device_path = None  # re-detect on reconnect
 
     def stop(self):
         self._running = False
@@ -273,11 +315,19 @@ class MV7Bridge:
 
 def main():
     parser = argparse.ArgumentParser(
-        description="HID Telephony bridge for Shure MV7+ on Linux/PipeWire",
+        description="USB HID Telephony mute bridge for Linux/PipeWire",
     )
     parser.add_argument(
         "-d", "--device",
         help="hidraw device path (auto-detected if omitted)",
+    )
+    parser.add_argument(
+        "--vid", default=DEFAULT_VID,
+        help="USB Vendor ID in hex (default: %(default)s)",
+    )
+    parser.add_argument(
+        "--pid", default=DEFAULT_PID,
+        help="USB Product ID in hex (default: %(default)s)",
     )
     parser.add_argument(
         "-a", "--auto-offhook",
@@ -296,12 +346,10 @@ def main():
         format="%(name)s: %(message)s",
     )
 
-    bridge = MV7Bridge(device=args.device, auto_offhook=args.auto_offhook)
+    bridge = MV7Bridge(device=args.device, auto_offhook=args.auto_offhook,
+                       vid=args.vid, pid=args.pid)
     try:
         bridge.run()
-    except RuntimeError as e:
-        log.error("%s", e)
-        sys.exit(1)
     except Exception:
         log.exception("Unexpected error")
         bridge.close()
