@@ -63,4 +63,3 @@ Phone Mute is **Relative**: sends `0x02` on press, `0x00` on release. Act only o
 - Default USB IDs: VID `0x14ED`, PID `0x1019` (Shure MV7+). Configurable via `--vid`/`--pid`.
 - Report IDs (0x04/0x05/0x06) are common but device-specific — other mics may differ.
 - Python 3.8 compatibility required (`str.removeprefix()` not available).
-- `CLAUDE-CLI-HANDOFF.md` contains the full diagnostic history, decoded HID report descriptor, and PipeWire node details.
