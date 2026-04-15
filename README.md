@@ -211,11 +211,15 @@ The script will:
 
 This ensures the tarball GitHub serves hasn't been tampered with between CI build and AUR publish. No secrets or SSH keys are stored in GitHub.
 
+## Related projects
+
+**[cakenes/shure-mv6-mute-sync](https://github.com/cakenes/shure-mv6-mute-sync)** solves the same problem for the Shure MV6. It uses a small kernel HID module to read/write the mic's mute state via USB Audio Class 2 control messages, plus a userspace C daemon for PipeWire sync.
+
+The two mics expose mute through different USB protocols — the MV6 through UAC2, the MV7+ through HID Telephony (0x0B) — which is why they end up needing different implementations.
+
 ## Roadmap
 
-This userspace daemon is a working solution, but the proper fix is in the kernel:
-
-1. **HID-BPF program** — a BPF program that handles the Off-Hook handshake in-kernel and emits `KEY_MICMUTE` via the input subsystem. No daemon needed — GNOME, KDE, and other desktops already handle `KEY_MICMUTE` natively. Requires `CONFIG_HID_BPF=y` (available since kernel 6.3, enabled by default on Arch 6.8+).
+1. **HID-BPF program** — a BPF program that handles the Off-Hook handshake in-kernel and emits `KEY_MICMUTE` via the input subsystem. No daemon needed — GNOME, KDE, and other desktops already handle `KEY_MICMUTE` natively. Requires `CONFIG_HID_BPF=y` (available since kernel 6.3, enabled by default on Arch 6.8+). This would be strictly better than both the userspace daemon and the out-of-tree kernel module approach.
 2. **Upstream kernel support** — the same HID Telephony handshake pattern applies to many USB mics. A generic kernel driver or `hid-input.c` patch could make all of them work out of the box.
 
 ## License
