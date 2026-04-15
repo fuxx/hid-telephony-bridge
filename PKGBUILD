@@ -1,6 +1,6 @@
 # Maintainer: Stefan Mayer-Popp <stefan@mayer-popp.de>
 pkgname=hid-telephony-bridge
-pkgver=0.1.1
+pkgver=0.1.2
 pkgrel=1
 pkgdesc="USB HID Telephony mute bridge for Linux/PipeWire (default: Shure MV7+)"
 arch=('any')
