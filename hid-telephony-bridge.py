@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-mv7-hid-bridge - USB HID Telephony mute bridge for Linux/PipeWire
+hid-telephony-bridge - USB HID Telephony mute bridge for Linux/PipeWire
 
 Bridges USB microphone hardware mute buttons to PipeWire source mute,
 enabling native desktop microphone indicators and proper mute state sync.
@@ -24,7 +24,7 @@ Modes:
                     adds ~2s latency before the button becomes responsive.
 
 Usage:
-  mv7-hid-bridge [--vid VID] [--pid PID] [--auto-offhook] [--device /dev/hidrawN]
+  hid-telephony-bridge [--vid VID] [--pid PID] [--auto-offhook] [--device /dev/hidrawN]
 """
 
 import argparse
@@ -50,7 +50,7 @@ DEFAULT_VID = "14ed"
 DEFAULT_PID = "1019"
 
 # Logging
-log = logging.getLogger("mv7-hid-bridge")
+log = logging.getLogger("hid-telephony-bridge")
 
 
 def normalize_usb_id(raw):
@@ -133,7 +133,7 @@ def has_active_capture_streams():
     return len(lines) > 0
 
 
-class MV7Bridge:
+class HIDTelephonyBridge:
     """
     Main bridge: HID Telephony - PipeWire mute state.
 
@@ -143,7 +143,7 @@ class MV7Bridge:
       3. close()      - clean up, send Off-Hook OFF
 
     The bridge toggles PipeWire source mute on each Report 0x04 press
-    event and keeps the MV7+ Mute LED in sync with the actual state.
+    event and keeps the device mute LED in sync with the actual state.
     """
 
     def __init__(self, device=None, auto_offhook=False,
@@ -209,11 +209,11 @@ class MV7Bridge:
         log.info("Off-Hook %s", "ON" if active else "OFF")
 
     def _set_mute_led(self, on):
-        """Control the MV7+ mute indicator LED."""
+        """Control the device mute indicator LED."""
         send_hid_report(self._fd, REPORT_MUTELED_OUT, 0x01 if on else 0x00)
 
     def _sync_mute_state(self, muted):
-        """Propagate mute state to PipeWire and MV7+ LED."""
+        """Propagate mute state to PipeWire and device LED."""
         self._muted = muted
         set_source_mute(muted)
         self._set_mute_led(muted)
@@ -346,7 +346,7 @@ def main():
         format="%(name)s: %(message)s",
     )
 
-    bridge = MV7Bridge(device=args.device, auto_offhook=args.auto_offhook,
+    bridge = HIDTelephonyBridge(device=args.device, auto_offhook=args.auto_offhook,
                        vid=args.vid, pid=args.pid)
     try:
         bridge.run()

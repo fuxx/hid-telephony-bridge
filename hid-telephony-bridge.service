@@ -3,16 +3,16 @@
 # (assuming the udev rule grants hidraw access).
 #
 # Install:
-#   cp mv7-hid-bridge.service /usr/lib/systemd/user/
+#   cp hid-telephony-bridge.service /usr/lib/systemd/user/
 #   systemctl --user daemon-reload
-#   systemctl --user enable --now mv7-hid-bridge.service
+#   systemctl --user enable --now hid-telephony-bridge.service
 #
 # Logs:
-#   journalctl --user -u mv7-hid-bridge -f
+#   journalctl --user -u hid-telephony-bridge -f
 
 [Unit]
 Description=USB HID Telephony Mute Bridge
-Documentation=https://github.com/fuxx/mv7-hid-bridge
+Documentation=https://github.com/fuxx/hid-telephony-bridge
 After=pipewire-pulse.service
 BindsTo=pipewire-pulse.service
 StartLimitIntervalSec=60
@@ -20,9 +20,9 @@ StartLimitBurst=5
 
 [Service]
 Type=simple
-ExecStart=/usr/bin/mv7-hid-bridge --verbose
+ExecStart=/usr/bin/hid-telephony-bridge --verbose
 # For a different device, override VID/PID:
-# ExecStart=/usr/bin/mv7-hid-bridge --vid 1234 --pid 5678 --verbose
+# ExecStart=/usr/bin/hid-telephony-bridge --vid 1234 --pid 5678 --verbose
 Restart=on-failure
 RestartSec=3
 

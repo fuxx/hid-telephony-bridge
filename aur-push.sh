@@ -8,7 +8,7 @@ set -euo pipefail
 #
 # Prerequisites:
 #   - AUR account with SSH key: https://aur.archlinux.org
-#   - Package registered: ssh aur@aur.archlinux.org setup-repo mv7-hid-bridge
+#   - Package registered: ssh aur@aur.archlinux.org setup-repo hid-telephony-bridge
 #
 # Workflow:
 #   1. Tag and push to GitHub (triggers CI build)
@@ -16,7 +16,7 @@ set -euo pipefail
 #   3. Run this script — it builds locally and compares checksums
 #   4. Review the diff, then confirm the push to AUR
 
-AUR_REPO="ssh://aur@aur.archlinux.org/mv7-hid-bridge.git"
+AUR_REPO="ssh://aur@aur.archlinux.org/hid-telephony-bridge.git"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
 if [[ $# -ne 1 ]]; then
@@ -27,7 +27,7 @@ fi
 TAG="$1"
 VERSION="${TAG#v}"
 
-echo "=== AUR Push: mv7-hid-bridge $VERSION ==="
+echo "=== AUR Push: hid-telephony-bridge $VERSION ==="
 echo
 
 # Step 1: Verify the tag exists locally
@@ -39,8 +39,8 @@ fi
 
 # Step 2: Download source tarball and compute checksum
 echo "[1/5] Downloading source tarball..."
-TARBALL_URL="https://github.com/fuxx/mv7-hid-bridge/archive/refs/tags/${TAG}.tar.gz"
-TARBALL="mv7-hid-bridge-${VERSION}.tar.gz"
+TARBALL_URL="https://github.com/fuxx/hid-telephony-bridge/archive/refs/tags/${TAG}.tar.gz"
+TARBALL="hid-telephony-bridge-${VERSION}.tar.gz"
 curl -sL "$TARBALL_URL" -o "/tmp/$TARBALL"
 LOCAL_SHA256=$(sha256sum "/tmp/$TARBALL" | cut -d' ' -f1)
 echo "      Source tarball SHA256: $LOCAL_SHA256"
@@ -75,7 +75,7 @@ WORK_DIR=$(mktemp -d)
 trap 'rm -rf "$WORK_DIR"' EXIT
 
 cp "$SCRIPT_DIR/PKGBUILD" "$WORK_DIR/"
-cp "$SCRIPT_DIR/mv7-hid-bridge.install" "$WORK_DIR/"
+cp "$SCRIPT_DIR/hid-telephony-bridge.install" "$WORK_DIR/"
 cd "$WORK_DIR"
 
 sed -i "s/^pkgver=.*/pkgver=$VERSION/" PKGBUILD
@@ -105,12 +105,12 @@ read -rp "Push to AUR? [y/N] " confirm
 echo "[5/5] Pushing to AUR..."
 AUR_DIR=$(mktemp -d)
 git clone "$AUR_REPO" "$AUR_DIR"
-cp PKGBUILD .SRCINFO mv7-hid-bridge.install "$AUR_DIR/"
+cp PKGBUILD .SRCINFO hid-telephony-bridge.install "$AUR_DIR/"
 cd "$AUR_DIR"
-git add PKGBUILD .SRCINFO mv7-hid-bridge.install
+git add PKGBUILD .SRCINFO hid-telephony-bridge.install
 git commit -m "Update to $VERSION"
 git push
 
 echo ""
 echo "=== Done ==="
-echo "Verify at: https://aur.archlinux.org/packages/mv7-hid-bridge"
+echo "Verify at: https://aur.archlinux.org/packages/hid-telephony-bridge"

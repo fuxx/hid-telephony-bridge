@@ -1,4 +1,4 @@
-# mv7-hid-bridge
+# hid-telephony-bridge
 
 Bridges USB microphone hardware mute buttons to Linux desktops via **USB HID Telephony**. Press the button on the mic, and PipeWire mutes — the GNOME microphone indicator updates, the mute LED on the mic lights up, and apps actually stop receiving audio. Muting from the desktop side (GNOME settings, `pactl`, etc.) syncs back to the LED.
 
@@ -58,16 +58,16 @@ The daemon handles USB disconnect and reconnect automatically. If the mic is unp
 ### Arch Linux (AUR)
 
 ```bash
-yay -S mv7-hid-bridge
-sudo usermod -aG input $USER   # then re-login
-systemctl --user enable --now mv7-hid-bridge
+yay -S hid-telephony-bridge
+sudo usermod -aG input $USER   # then re-login, or: newgrp input
+systemctl --user enable --now hid-telephony-bridge
 ```
 
 ### From source
 
 ```bash
-git clone https://github.com/fuxx/mv7-hid-bridge.git
-cd mv7-hid-bridge
+git clone https://github.com/fuxx/hid-telephony-bridge.git
+cd hid-telephony-bridge
 chmod +x install.sh
 ./install.sh
 ```
@@ -75,7 +75,7 @@ chmod +x install.sh
 The install script will:
 - Install the bridge script to `/usr/bin/` (needs sudo)
 - Install a udev rule granting the `input` group access to the hidraw device
-- Add your user to the `input` group if needed (needs re-login to take effect)
+- Add your user to the `input` group if needed (re-login or `newgrp input` to apply)
 - Install and enable a systemd user service
 
 ### Manual setup
@@ -84,21 +84,21 @@ If you prefer to set things up yourself:
 
 ```bash
 # 1. udev rule for hidraw permissions
-sudo install -Dm644 99-shure-mv7-hid.rules /etc/udev/rules.d/99-shure-mv7-hid.rules
+sudo install -Dm644 99-hid-telephony-bridge.rules /etc/udev/rules.d/99-hid-telephony-bridge.rules
 sudo udevadm control --reload-rules
 sudo udevadm trigger --subsystem-match=hidraw
 
-# 2. Add yourself to the input group (then re-login)
+# 2. Add yourself to the input group (then re-login, or: newgrp input)
 sudo usermod -aG input $USER
 
 # 3. Test it
-python3 mv7-hid-bridge.py --verbose
+python3 hid-telephony-bridge.py --verbose
 
 # 4. Install as a systemd user service
-sudo install -Dm755 mv7-hid-bridge.py /usr/bin/mv7-hid-bridge
-sudo install -Dm644 mv7-hid-bridge.service /usr/lib/systemd/user/mv7-hid-bridge.service
+sudo install -Dm755 hid-telephony-bridge.py /usr/bin/hid-telephony-bridge
+sudo install -Dm644 hid-telephony-bridge.service /usr/lib/systemd/user/hid-telephony-bridge.service
 systemctl --user daemon-reload
-systemctl --user enable --now mv7-hid-bridge
+systemctl --user enable --now hid-telephony-bridge
 ```
 
 ## Usage
@@ -107,19 +107,19 @@ Once installed, the service starts automatically with your desktop session (boun
 
 ```bash
 # Check status
-systemctl --user status mv7-hid-bridge
+systemctl --user status hid-telephony-bridge
 
 # Watch logs
-journalctl --user -u mv7-hid-bridge -f
+journalctl --user -u hid-telephony-bridge -f
 
 # Restart after a config change
-systemctl --user restart mv7-hid-bridge
+systemctl --user restart hid-telephony-bridge
 ```
 
 ### Options
 
 ```
-mv7-hid-bridge [--vid VID] [--pid PID] [--device /dev/hidrawN] [--auto-offhook] [--verbose]
+hid-telephony-bridge [--vid VID] [--pid PID] [--device /dev/hidrawN] [--auto-offhook] [--verbose]
 ```
 
 | Flag | Description |
@@ -133,7 +133,7 @@ mv7-hid-bridge [--vid VID] [--pid PID] [--device /dev/hidrawN] [--auto-offhook] 
 To enable auto-offhook mode permanently, use a systemd drop-in:
 
 ```bash
-systemctl --user edit mv7-hid-bridge.service
+systemctl --user edit hid-telephony-bridge.service
 ```
 
 Then add:
@@ -141,31 +141,37 @@ Then add:
 ```ini
 [Service]
 ExecStart=
-ExecStart=/usr/bin/mv7-hid-bridge --auto-offhook --verbose
+ExecStart=/usr/bin/hid-telephony-bridge --auto-offhook --verbose
 ```
 
 ## Other devices
 
 The daemon should work with any USB microphone that implements HID Telephony Page (0x0B) with the standard report layout (reports 0x04/0x05/0x06). To use it with a different device:
 
-1. **Find your device's USB IDs:**
+1. **Find your device's USB IDs** — plug in the mic and run:
    ```bash
-   lsusb | grep -i <device-name>
+   lsusb
+   ```
+   Look for your device in the output. The VID:PID pair is in the `ID` column:
+   ```
+   Bus 005 Device 005: ID 14ed:1019 Shure Inc Shure MV7+
+                           ^^^^:^^^^
+                           VID   PID
    ```
 
-2. **Add a udev rule** — duplicate the line in `99-shure-mv7-hid.rules` with your VID/PID:
+2. **Add a udev rule** — duplicate the line in `99-hid-telephony-bridge.rules` with your VID/PID:
    ```
    SUBSYSTEM=="hidraw", ATTRS{idVendor}=="XXXX", ATTRS{idProduct}=="XXXX", MODE="0660", GROUP="input", TAG+="uaccess"
    ```
 
 3. **Override VID/PID** via systemd drop-in:
    ```bash
-   systemctl --user edit mv7-hid-bridge.service
+   systemctl --user edit hid-telephony-bridge.service
    ```
    ```ini
    [Service]
    ExecStart=
-   ExecStart=/usr/bin/mv7-hid-bridge --vid XXXX --pid XXXX --verbose
+   ExecStart=/usr/bin/hid-telephony-bridge --vid XXXX --pid XXXX --verbose
    ```
 
 If your device uses different HID report IDs, please open an issue with the output of:
