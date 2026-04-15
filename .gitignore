@@ -5,6 +5,9 @@ src/
 pkg/
 .SRCINFO
 
+# CI artifact pulled in via aur-push.sh — regenerated per release
+checksums.txt
+
 # Editor / OS
 *.swp
 *~

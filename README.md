@@ -58,10 +58,19 @@ The daemon handles USB disconnect and reconnect automatically. If the mic is unp
 ### Arch Linux (AUR)
 
 ```bash
-yay -S hid-telephony-bridge
-sudo usermod -aG input $USER   # then re-login, or: newgrp input
+yay -S hid-telephony-bridge      # or: paru -S hid-telephony-bridge
+sudo usermod -aG input $USER     # then re-login, or: newgrp input
 systemctl --user enable --now hid-telephony-bridge
 ```
+
+To uninstall cleanly, **stop the service first** (pacman runs as root and can't touch user services):
+
+```bash
+systemctl --user disable --now hid-telephony-bridge
+yay -Rns hid-telephony-bridge
+```
+
+If you forget and the daemon keeps running from the now-deleted binary (systemd holds the file descriptor), run `systemctl --user kill hid-telephony-bridge` to clean it up.
 
 ### From source
 
