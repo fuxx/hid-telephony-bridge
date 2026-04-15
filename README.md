@@ -168,9 +168,13 @@ The daemon should work with any USB microphone that implements HID Telephony Pag
                            VID   PID
    ```
 
-2. **Add a udev rule** — duplicate the line in `99-hid-telephony-bridge.rules` with your VID/PID:
-   ```
+2. **Add a udev rule for your device.** The package ships a rule only for the MV7+. Create a new file in `/etc/udev/rules.d/` (admin path — do not edit the one in `/usr/lib/udev/rules.d/`, which is package-managed):
+   ```bash
+   sudo tee /etc/udev/rules.d/90-my-telephony-mic.rules <<EOF
    SUBSYSTEM=="hidraw", ATTRS{idVendor}=="XXXX", ATTRS{idProduct}=="XXXX", MODE="0660", GROUP="input", TAG+="uaccess"
+   EOF
+   sudo udevadm control --reload-rules
+   sudo udevadm trigger --subsystem-match=hidraw
    ```
 
 3. **Override VID/PID** via systemd drop-in:
@@ -182,6 +186,8 @@ The daemon should work with any USB microphone that implements HID Telephony Pag
    ExecStart=
    ExecStart=/usr/bin/hid-telephony-bridge --vid XXXX --pid XXXX --verbose
    ```
+
+Without the udev rule, the hidraw node for your device will be `root:root 0600` and the daemon will fail with permission denied.
 
 If your device uses different HID report IDs, please open an issue with the output of:
 ```bash
